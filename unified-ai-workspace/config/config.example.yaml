@@ -1,0 +1,194 @@
+# Unified AI Workspace Configuration
+# Copy this file to config.yaml and customize for your setup
+
+# ============================================================================
+# LLM CONFIGURATION
+# ============================================================================
+llm:
+  # Provider: ollama (recommended), lm_studio, llama_cpp
+  provider: "ollama"
+
+  # Base URL for LLM API
+  base_url: "http://localhost:11434"
+
+  # Model selection
+  default_model: "qwen2.5:7b"  # General purpose
+  function_calling_model: "qwen2.5:7b"  # For function calls (needs good function support)
+  code_model: "qwen2.5-coder:7b"  # For code generation
+
+  # Generation parameters
+  temperature: 0.7
+  max_tokens: 4096
+  timeout: 120  # seconds
+
+# ============================================================================
+# VOICE PIPELINE CONFIGURATION
+# ============================================================================
+voice:
+  # Enable voice features (TTS/STT)
+  enabled: true
+
+  # Text-to-Speech engine
+  # Options: indic_parler (recommended), indicf5, xtts, mms
+  tts_engine: "indic_parler"
+
+  # Speech-to-Text engine
+  # Options: indic_conformer (recommended), whisper
+  stt_engine: "indic_conformer"
+
+  # Default language for voice synthesis/recognition
+  default_language: "hindi"  # See docs for 21 supported languages
+
+  # Default voice gender (if applicable)
+  default_voice_gender: "female"
+
+  # Path to store downloaded voice models
+  models_path: "./voice_models"
+
+  # Audio sample rate
+  sample_rate: 16000
+
+# ============================================================================
+# BROWSER AUTOMATION CONFIGURATION
+# ============================================================================
+browser:
+  # Enable browser automation features
+  enabled: true
+
+  # Run browser in headless mode
+  headless: false
+
+  # Driver: browser_use (recommended), playwright, selenium
+  driver: "browser_use"
+
+  # Timeout for browser operations (milliseconds)
+  timeout: 30000
+
+  # Viewport size
+  viewport_width: 1920
+  viewport_height: 1080
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+database:
+  # Path to skillbook database (SQLite)
+  skillbook_path: "./data/skillbook.db"
+
+  # Path to workspace database (SQLite)
+  workspace_path: "./data/workspace.db"
+
+  # Path to vector database (ChromaDB)
+  vector_db_path: "./data/vector_db"
+
+  # Embedding model for semantic search
+  # Options: sentence-transformers/all-MiniLM-L6-v2 (fast, 384dim)
+  #          sentence-transformers/all-mpnet-base-v2 (better, 768dim)
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+# ============================================================================
+# DASHBOARD CONFIGURATION
+# ============================================================================
+dashboard:
+  # Enable web dashboard (Streamlit)
+  enabled: true
+
+  # Host to bind to
+  host: "0.0.0.0"  # Use "127.0.0.1" for localhost only
+
+  # Port to run dashboard on
+  port: 8501
+
+  # Auto-refresh interval (seconds)
+  auto_refresh_interval: 5
+
+# ============================================================================
+# MCP SERVER CONFIGURATION
+# ============================================================================
+mcp:
+  # Enable MCP server
+  enabled: true
+
+  # MCP servers configuration
+  servers:
+    unified_workspace:
+      command: "python"
+      args: ["integration/mcp_server.py"]
+      env:
+        CONFIG_PATH: "./config/config.yaml"
+
+# ============================================================================
+# GENERAL SETTINGS
+# ============================================================================
+
+# Enable debug mode (verbose logging)
+debug: false
+
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: "INFO"
+
+# Data directory (where databases and models are stored)
+data_dir: "./data"
+
+# Config directory
+config_dir: "./config"
+
+# ============================================================================
+# SYSTEM-SPECIFIC SETTINGS
+# ============================================================================
+
+# System 1: ACE Prompt Engineering
+ace:
+  # Default validation threshold (prompts below this score get refined)
+  validation_threshold: 3.5  # out of 5.0
+
+  # Maximum refinement iterations
+  max_refinement_iterations: 3
+
+  # Skill retrieval settings
+  skill_retrieval:
+    default_limit: 5
+    similarity_threshold: 0.7
+
+# System 2: AI Workspace
+workspace:
+  # Default department to show on startup
+  default_department: "sales"
+
+  # Enable voice for meetings by default
+  default_voice_enabled: false
+
+  # Task timeout (seconds)
+  task_timeout: 300
+
+  # Meeting settings
+  meetings:
+    max_participants: 10
+    default_duration_minutes: 30
+
+  # Deployment settings
+  deployment:
+    default_hosting: "vercel"  # vercel, railway, render
+    auto_configure_env: true
+    health_check_interval: 300  # seconds
+
+# ============================================================================
+# ADVANCED SETTINGS
+# ============================================================================
+
+# GPU acceleration settings (if available)
+gpu:
+  enabled: true
+  device: "cuda"  # cuda, mps (Mac), cpu
+  max_memory_mb: 8192
+
+# Async execution settings
+async:
+  max_concurrent_tasks: 5
+  task_queue_size: 100
+
+# Cache settings
+cache:
+  enabled: true
+  ttl_seconds: 3600  # 1 hour
+  max_size_mb: 1024  # 1 GB
