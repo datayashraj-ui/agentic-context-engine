@@ -9,6 +9,7 @@ Available Integrations:
     - browser-use: ACEAgent - Self-improving browser automation
     - LangChain: ACELangChain - Complex workflows with learning
     - Claude Code: ACEClaudeCode - Claude Code CLI with learning
+    - GitHub Repo Converter: GitHubRepoConverter - Convert GitHub repos into working products
 
 Pattern:
     All integrations follow the same pattern:
@@ -71,12 +72,25 @@ except ImportError:
     ACEClaudeCode = None  # type: ignore
     CLAUDE_CODE_AVAILABLE = False
 
+# Import GitHub Repo Converter (always available)
+try:
+    from .github_repo_converter import GitHubRepoConverter, RepoIssue, FixAttempt, ConversionResult
+except ImportError:
+    GitHubRepoConverter = None  # type: ignore
+    RepoIssue = None  # type: ignore
+    FixAttempt = None  # type: ignore
+    ConversionResult = None  # type: ignore
+
 __all__ = [
     "wrap_skillbook_context",
     "ACELiteLLM",
     "ACEAgent",
     "ACELangChain",
     "ACEClaudeCode",
+    "GitHubRepoConverter",
+    "RepoIssue",
+    "FixAttempt",
+    "ConversionResult",
     "BROWSER_USE_AVAILABLE",
     "LANGCHAIN_AVAILABLE",
     "CLAUDE_CODE_AVAILABLE",
