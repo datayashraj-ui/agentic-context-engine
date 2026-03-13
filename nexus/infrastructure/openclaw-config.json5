@@ -1,0 +1,144 @@
+// OpenClaw Configuration for NEXUS
+// CEO Agent + Telegram/WhatsApp Gateway
+// Deploy on Oracle Cloud ARM instance
+
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        // Primary model for all agents (free, 1M context)
+        "primary": "google/gemini-3.1-pro",
+        // Fallback chain if primary is unavailable
+        "fallbacks": ["groq/llama-4-scout", "ollama/glm-5:cloud"]
+      },
+      "maxTokens": 8192,
+      "temperature": 0.7
+    },
+
+    // CEO Agent — always-on, handles all founder communication
+    "ceo": {
+      "persona": "agents/ceo.md",
+      "model": {
+        "primary": "google/gemini-3.1-pro",
+        "fallbacks": ["groq/llama-4-scout"]
+      },
+      "memory": {
+        "provider": "cognee",
+        "namespace": "ceo-decisions"
+      }
+    }
+  },
+
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      // Only founder can DM the CEO agent
+      "dmPolicy": "allowlist",
+      "allowFrom": ["FOUNDER_TELEGRAM_ID"],
+      // Bot token from @BotFather
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      // Group policy if you create a NEXUS group later
+      "groupPolicy": "disabled"
+    },
+
+    "whatsapp": {
+      "enabled": true,
+      // Founder can send commands, customers get support
+      "dmPolicy": "allowlist",
+      "allowFrom": ["FOUNDER_PHONE_NUMBER"],
+      // WhatsApp Business API or WPPConnect
+      "provider": "wppconnect",
+      "sessionFile": "./whatsapp-session.json",
+      "groupPolicy": "disabled"
+    }
+  },
+
+  "session": {
+    "dmScope": "main",
+    // Persist conversation context between messages
+    "contextWindow": 50,
+    // Resume sessions after restart
+    "persistSessions": true,
+    "sessionDir": "./sessions"
+  },
+
+  "skills": {
+    // Skills directory — each .md file is a skill
+    "dir": "telegram-commands/",
+    // Auto-detect skill triggers from message content
+    "autoDetect": true
+  },
+
+  "cron": [
+    {
+      "name": "morning-briefing",
+      "schedule": "0 7 * * *",
+      "prompt": "Generate morning briefing: check PROGRESS_LOG.md for overnight activity, check Beads for today's priority tasks, check Stripe for revenue, check GlitchTip for errors. Send conversational summary to Telegram under 200 words. Be warm and direct, like a CEO giving their founder a morning update.",
+      "channel": "telegram"
+    },
+    {
+      "name": "midday-update",
+      "schedule": "0 12 * * *",
+      "prompt": "Check current task progress in Beads. Any blockers? Any decisions pending in docs/FEEDBACK.md? Send brief 100-word update to Telegram. If nothing notable, just say everything's on track.",
+      "channel": "telegram"
+    },
+    {
+      "name": "evening-summary",
+      "schedule": "0 18 * * *",
+      "prompt": "Generate evening summary: query Beads for tasks completed today, check Stripe for today's revenue, set tomorrow's top 3 priorities. Send to Telegram. End with a reassuring sign-off.",
+      "channel": "telegram"
+    },
+    {
+      "name": "market-scout-daily",
+      "schedule": "0 3 * * *",
+      "prompt": "Trigger Market Scout agent to scan Product Hunt, Hacker News, Reddit r/SaaS for opportunities in voice AI and B2B SaaS. Log findings in docs/MARKET_INTEL.md. Only notify founder via Telegram if opportunity scores above 8/10.",
+      "channel": "internal",
+      "agent": "market-scout"
+    },
+    {
+      "name": "watchdog-check",
+      "schedule": "*/5 * * * *",
+      "prompt": "Run health check: verify all ZeroClaw daemons running, check Langfuse for cost spikes, check GlitchTip for critical errors. If all clear, log silently. If any issue: alert CEO agent immediately.",
+      "channel": "internal",
+      "agent": "watchdog"
+    },
+    {
+      "name": "finance-weekly",
+      "schedule": "0 9 * * 1",
+      "prompt": "Generate weekly P&L report: pull Stripe revenue, Langfuse LLM costs, calculate net profit. Send report to CEO via Agent Mail.",
+      "channel": "internal",
+      "agent": "finance"
+    },
+    {
+      "name": "jules-maintenance",
+      "schedule": "0 2 * * *",
+      "prompt": "Trigger Jules for scheduled maintenance tasks: check for dependency updates across all repos, run test coverage analysis, flag any security advisories. Log results.",
+      "channel": "internal"
+    },
+    {
+      "name": "product-insights-weekly",
+      "schedule": "0 8 * * 0",
+      "prompt": "Run weekly product analysis: pull PostHog funnel data, Chatwoot support themes, InsForge user metrics. Generate Product Insights Report and create top 3 improvement tasks in Beads.",
+      "channel": "internal",
+      "agent": "product-analyst"
+    }
+  ],
+
+  "mcp": {
+    // MCP servers available to CEO agent
+    "servers": [
+      { "name": "beads", "command": "npx beads-mcp", "env": { "BEADS_API_KEY": "${BEADS_API_KEY}" } },
+      { "name": "stripe", "command": "npx @stripe/mcp", "env": { "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}" } },
+      { "name": "cognee", "command": "npx @cognee/mcp", "env": { "COGNEE_URL": "${COGNEE_URL}" } },
+      { "name": "filesystem", "command": "npx @modelcontextprotocol/server-filesystem", "args": ["/home/nexus"] },
+      { "name": "sequential-thinking", "command": "npx @modelcontextprotocol/server-sequential-thinking" }
+    ]
+  },
+
+  "logging": {
+    "level": "info",
+    "file": "./logs/openclaw.log",
+    "maxSize": "100mb",
+    "maxFiles": 5
+  }
+}

@@ -1,0 +1,432 @@
+version: "3.9"
+
+# NEXUS Infrastructure — Oracle Cloud ARM64 (aarch64)
+# Target: < 20GB RAM total
+# All services self-hosted, zero cost
+
+x-restart-policy: &restart-policy
+  restart: unless-stopped
+
+x-logging: &default-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+networks:
+  nexus:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  insforge_data:
+  perplexica_data:
+  n8n_data:
+  chatwoot_postgres:
+  chatwoot_redis:
+  twenty_postgres:
+  twenty_redis:
+  posthog_postgres:
+  posthog_clickhouse:
+  posthog_redis:
+  glitchtip_postgres:
+  glitchtip_redis:
+  langfuse_postgres:
+  openclaw_data:
+  cognee_data:
+
+services:
+
+  # ============================================================
+  # OPENCLAW — CEO Agent Gateway (Telegram + WhatsApp)
+  # Always-on, handles all founder communication
+  # RAM: ~512MB
+  # ============================================================
+  openclaw:
+    image: openclaw/openclaw:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "18789:18789"
+    volumes:
+      - openclaw_data:/app/data
+      - ./openclaw-config.json5:/app/config.json5:ro
+      - ../agents:/app/agents:ro
+      - ../telegram-commands:/app/telegram-commands:ro
+      - ../docs:/app/docs
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - FOUNDER_TELEGRAM_ID=${FOUNDER_TELEGRAM_ID}
+      - FOUNDER_PHONE_NUMBER=${FOUNDER_PHONE_NUMBER}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - BEADS_API_KEY=${BEADS_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - COGNEE_URL=http://cognee:8765
+    networks:
+      - nexus
+    depends_on:
+      - insforge
+      - cognee
+
+  # ============================================================
+  # INSFORGE — Database + Auth + S3-compatible Storage
+  # Replaces: Supabase + Cloudflare R2 + Auth0
+  # RAM: ~1GB
+  # ============================================================
+  insforge:
+    image: insforge/insforge:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - insforge_data:/var/lib/insforge
+    environment:
+      - INSFORGE_JWT_SECRET=${INSFORGE_JWT_SECRET}
+      - INSFORGE_ADMIN_EMAIL=${INSFORGE_ADMIN_EMAIL}
+      - INSFORGE_ADMIN_PASSWORD=${INSFORGE_ADMIN_PASSWORD}
+      - INSFORGE_S3_BUCKET=nexus-voice-lab
+      - POSTGRES_PASSWORD=${INSFORGE_DB_PASSWORD}
+    networks:
+      - nexus
+
+  # ============================================================
+  # PERPLEXICA — AI-powered Web Search
+  # Replaces: Perplexity API ($20/mo)
+  # RAM: ~512MB
+  # ============================================================
+  perplexica:
+    image: itzcrazykns1337/perplexica:main
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - perplexica_data:/home/perplexica/data
+    environment:
+      - OPENAI_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+      - CHAT_MODEL_PROVIDER=openai
+      - CHAT_MODEL=gemini-2.0-flash
+      - EMBEDDING_MODEL_PROVIDER=openai
+      - EMBEDDING_MODEL=text-embedding-004
+    networks:
+      - nexus
+
+  # ============================================================
+  # N8N — Workflow Automation
+  # Replaces: Zapier / Make ($0 self-hosted)
+  # RAM: ~512MB
+  # ============================================================
+  n8n:
+    image: n8nio/n8n:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=n8n.${BASE_DOMAIN}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - WEBHOOK_URL=https://n8n.${BASE_DOMAIN}/
+      - GENERIC_TIMEZONE=Asia/Kolkata
+    networks:
+      - nexus
+
+  # ============================================================
+  # CHATWOOT — Customer Support Inbox
+  # Replaces: Intercom / Zendesk
+  # RAM: ~1.5GB (includes postgres + redis)
+  # ============================================================
+  chatwoot-postgres:
+    image: postgres:16-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - chatwoot_postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=chatwoot
+      - POSTGRES_PASSWORD=${CHATWOOT_DB_PASSWORD}
+    networks:
+      - nexus
+
+  chatwoot-redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - chatwoot_redis:/data
+    networks:
+      - nexus
+
+  chatwoot:
+    image: chatwoot/chatwoot:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - chatwoot_postgres:/app/storage
+    environment:
+      - SECRET_KEY_BASE=${CHATWOOT_SECRET_KEY}
+      - FRONTEND_URL=https://support.${BASE_DOMAIN}
+      - DEFAULT_LOCALE=en
+      - FORCE_SSL=true
+      - POSTGRES_HOST=chatwoot-postgres
+      - POSTGRES_USERNAME=chatwoot
+      - POSTGRES_PASSWORD=${CHATWOOT_DB_PASSWORD}
+      - POSTGRES_DATABASE=chatwoot
+      - REDIS_URL=redis://chatwoot-redis:6379
+      - MAILER_SENDER_EMAIL=${SUPPORT_EMAIL}
+      - SMTP_ADDRESS=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASS}
+    depends_on:
+      - chatwoot-postgres
+      - chatwoot-redis
+    networks:
+      - nexus
+
+  # ============================================================
+  # TWENTY CRM — Customer Relationship Management
+  # Replaces: HubSpot / Pipedrive
+  # RAM: ~1GB
+  # ============================================================
+  twenty-postgres:
+    image: postgres:16-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - twenty_postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=twenty
+      - POSTGRES_USER=twenty
+      - POSTGRES_PASSWORD=${TWENTY_DB_PASSWORD}
+    networks:
+      - nexus
+
+  twenty-redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - twenty_redis:/data
+    networks:
+      - nexus
+
+  twenty-crm:
+    image: twentycrm/twenty:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:3002:3000"
+    environment:
+      - SERVER_URL=https://crm.${BASE_DOMAIN}
+      - POSTGRES_HOST=twenty-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=twenty
+      - POSTGRES_PASSWORD=${TWENTY_DB_PASSWORD}
+      - POSTGRES_DB=twenty
+      - REDIS_URL=redis://twenty-redis:6379
+      - APP_SECRET=${TWENTY_SECRET}
+    depends_on:
+      - twenty-postgres
+      - twenty-redis
+    networks:
+      - nexus
+
+  # ============================================================
+  # POSTHOG — Product Analytics
+  # Replaces: Mixpanel / Amplitude
+  # RAM: ~3GB (Postgres + ClickHouse + Redis)
+  # ============================================================
+  posthog-postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - posthog_postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=posthog
+      - POSTGRES_USER=posthog
+      - POSTGRES_PASSWORD=${POSTHOG_DB_PASSWORD}
+    networks:
+      - nexus
+
+  posthog-redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - posthog_redis:/data
+    networks:
+      - nexus
+
+  posthog-clickhouse:
+    image: clickhouse/clickhouse-server:23.6-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - posthog_clickhouse:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - nexus
+
+  posthog:
+    image: posthog/posthog:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:8010:8000"
+    environment:
+      - SECRET_KEY=${POSTHOG_SECRET}
+      - DATABASE_URL=postgres://posthog:${POSTHOG_DB_PASSWORD}@posthog-postgres/posthog
+      - REDIS_URL=redis://posthog-redis:6379
+      - CLICKHOUSE_HOST=posthog-clickhouse
+      - SITE_URL=https://analytics.${BASE_DOMAIN}
+      - DISABLE_SECURE_SSL_REDIRECT=1
+    depends_on:
+      - posthog-postgres
+      - posthog-redis
+      - posthog-clickhouse
+    networks:
+      - nexus
+
+  # ============================================================
+  # GLITCHTIP — Error Monitoring
+  # Replaces: Sentry ($0 self-hosted)
+  # RAM: ~512MB
+  # ============================================================
+  glitchtip-postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - glitchtip_postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=glitchtip
+      - POSTGRES_USER=glitchtip
+      - POSTGRES_PASSWORD=${GLITCHTIP_DB_PASSWORD}
+    networks:
+      - nexus
+
+  glitchtip-redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - glitchtip_redis:/data
+    networks:
+      - nexus
+
+  glitchtip:
+    image: glitchtip/glitchtip:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - DATABASE_URL=postgres://glitchtip:${GLITCHTIP_DB_PASSWORD}@glitchtip-postgres/glitchtip
+      - REDIS_URL=redis://glitchtip-redis:6379
+      - SECRET_KEY=${GLITCHTIP_SECRET}
+      - PORT=8080
+      - EMAIL_URL=smtp://${SMTP_USER}:${SMTP_PASS}@${SMTP_HOST}:${SMTP_PORT}
+      - GLITCHTIP_DOMAIN=https://errors.${BASE_DOMAIN}
+    depends_on:
+      - glitchtip-postgres
+      - glitchtip-redis
+    networks:
+      - nexus
+
+  # ============================================================
+  # LANGFUSE — LLM Observability + Cost Tracking
+  # Replaces: Helicone / Portkey
+  # RAM: ~512MB
+  # ============================================================
+  langfuse-postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    volumes:
+      - langfuse_postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=langfuse
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=${LANGFUSE_DB_PASSWORD}
+    networks:
+      - nexus
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:3003:3000"
+    environment:
+      - DATABASE_URL=postgres://langfuse:${LANGFUSE_DB_PASSWORD}@langfuse-postgres/langfuse
+      - NEXTAUTH_URL=https://traces.${BASE_DOMAIN}
+      - NEXTAUTH_SECRET=${LANGFUSE_SECRET}
+      - SALT=${LANGFUSE_SALT}
+    depends_on:
+      - langfuse-postgres
+    networks:
+      - nexus
+
+  # ============================================================
+  # COGNEE — Knowledge Graph (Agent Memory)
+  # All agents read/write persistent knowledge here
+  # RAM: ~512MB
+  # ============================================================
+  cognee:
+    image: cognee/cognee:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - cognee_data:/app/data
+    environment:
+      - COGNEE_API_KEY=${COGNEE_API_KEY}
+      - LLM_PROVIDER=google
+      - LLM_MODEL=gemini-2.0-flash
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - EMBEDDING_PROVIDER=google
+      - EMBEDDING_MODEL=text-embedding-004
+    networks:
+      - nexus
+
+  # ============================================================
+  # TAILSCALE — Secure Remote Access (sidecar)
+  # Allows founder SSH access from phone via Termux
+  # RAM: ~64MB
+  # ============================================================
+  tailscale:
+    image: tailscale/tailscale:latest
+    platform: linux/arm64
+    <<: [*restart-policy, *default-logging]
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - /dev/net/tun:/dev/net/tun
+      - /var/lib/tailscale:/var/lib/tailscale
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTH_KEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_HOSTNAME=nexus-oracle
+    network_mode: host
